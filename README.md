@@ -8,7 +8,7 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 
 - [🔐 Azure Key Vault Configuration (Recommended for Production)](#-azure-key-vault-configuration-recommended-for-production)
 - [🧪 Dry Run Mode - Test Without Sending SMS](#-dry-run-mode---test-without-sending-sms)
-- [�🚀 Quick Start (5 Minutes)](#-quick-start-5-minutes)
+- [🚀 Quick Start (5 Minutes)](#-quick-start-5-minutes)
 - [⭐ Key Features](#-key-features)
 - [📊 Azure Communication Services Rate Limits](#-azure-communication-services-rate-limits)
 - [🛠️ Prerequisites](#️-prerequisites)
@@ -20,6 +20,8 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 - [🏃‍♂️ Quick Start Examples](#️-quick-start-examples)
 - [📑 Reports and Output](#-reports-and-output)
 - [🔬 Advanced Configuration](#-advanced-configuration)
+- [👨‍💻 Developer Section](#-developer-section)
+- [📋 Commands Reference](#-commands-reference)
 - [🔧 Troubleshooting & Common Issues](#-troubleshooting--common-issues)
 - [📁 Project Structure](#-project-structure)
 - [🔍 Comprehensive Logging and Monitoring](#-comprehensive-logging-and-monitoring)
@@ -60,26 +62,33 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 - ✅ **Single-file executable** - portable deployment with embedded dependencies
 - ✅ **Configuration-driven design** - flexible settings without code changes
 
-## 🔐 Azure Key Vault Configuration (Recommended for Production)
+## 🔐 Azure Key Vault Configuration (REQUIRED for Production)
 
-**IMPORTANT**: For production environments, use Azure Key Vault to securely store your Azure Communication Services credentials instead of storing them in configuration files.
+**CRITICAL FOR PRODUCTION**: Production environments MUST use Azure Key Vault to securely store Azure Communication Services credentials. Never store sensitive credentials in configuration files in production environments.
 
-### Quick Azure Key Vault Setup
+**Security Requirements by Environment:**
+- **🔒 Production**: Azure Key Vault is MANDATORY - configuration files with credentials are not permitted
+- **🧪 Staging**: Azure Key Vault is HIGHLY RECOMMENDED for production-like security
+- **💻 Development**: Environment variables or user secrets acceptable for local development only
+
+### Quick Azure Key Vault Setup (REQUIRED for Production)
+
+**⚠️ PRODUCTION SECURITY REQUIREMENT**: The following steps are MANDATORY for production deployments. Do not deploy to production without Azure Key Vault configuration.
 
 1. **Create Key Vault and store secrets:**
 ```bash
-# Create Key Vault
+# Create Key Vault (use your actual resource group and location)
 az keyvault create --name MyKeyVaultName --resource-group MyResourceGroup --location eastus
 
-# Store secrets
+# Store secrets securely (NEVER store these in configuration files)
 az keyvault secret set --vault-name MyKeyVaultName --name "acs-connection-string" --value "endpoint=https://your-acs-resource.communication.azure.com/;accesskey=your-access-key"
 az keyvault secret set --vault-name MyKeyVaultName --name "acs-from-phone-number" --value "+1234567890"
 
-# Grant access
+# Grant access (use your actual user/service principal ID)
 az role assignment create --role "Key Vault Secrets User" --assignee <your-user-id> --scope /subscriptions/<subscription-id>/resourceGroups/MyResourceGroup/providers/Microsoft.KeyVault/vaults/MyKeyVaultName
 ```
 
-2. **Enable Key Vault in appsettings.json:**
+2. **Enable Key Vault in appsettings.json (PRODUCTION CONFIGURATION):**
 ```json
 {
   "KeyVault": {
@@ -87,13 +96,22 @@ az role assignment create --role "Key Vault Secrets User" --assignee <your-user-
     "VaultUri": "https://MyKeyVaultName.vault.azure.net/",
     "ConnectionStringSecretName": "acs-connection-string",
     "FromPhoneNumberSecretName": "acs-from-phone-number"
+  },
+  "AzureCommunicationServices": {
+    "ConnectionString": "",
+    "FromPhoneNumber": ""
   }
 }
 ```
+**⚠️ IMPORTANT**: Leave `ConnectionString` and `FromPhoneNumber` empty in production - they will be loaded from Key Vault.
 
-3. **Authenticate with Azure:**
+3. **Authenticate with Azure (PRODUCTION REQUIREMENT):**
 ```bash
+# For production deployments, use managed identity or service principal
 az login
+
+# Verify access to Key Vault
+az keyvault secret show --vault-name MyKeyVaultName --name "acs-connection-string" --query value -o tsv
 ```
 
 📋 **For complete Azure Key Vault setup instructions, see:** [AZURE_KEYVAULT_SETUP.md](AZURE_KEYVAULT_SETUP.md)
@@ -181,11 +199,18 @@ cd BatchSMS
   }
 }
 
-# For production: Configure Azure credentials (see Azure Key Vault section above)
+# For production: MANDATORY Azure Key Vault configuration (see Azure Key Vault section above)
+# NEVER store credentials in appsettings.json for production
 {
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://MyKeyVaultName.vault.azure.net/",
+    "ConnectionStringSecretName": "acs-connection-string",
+    "FromPhoneNumberSecretName": "acs-from-phone-number"
+  },
   "AzureCommunicationServices": {
-    "ConnectionString": "endpoint=https://your-acs-resource.communication.azure.com/;accesskey=your-key",
-    "FromPhoneNumber": "+1234567890"
+    "ConnectionString": "",
+    "FromPhoneNumber": ""
   }
 }
 ```
@@ -201,25 +226,25 @@ PhoneNumber,DisplayName
 ### 3. **Test with Dry Run (No SMS sent)**
 ```bash
 # Validate your CSV file
-dotnet run validate your-file.csv
+BatchSMS.exe validate your-file.csv
 
 # Option A: Quick test with command line flag (no config changes needed)
-dotnet run -- --dry-run --csv your-file.csv
+BatchSMS.exe --dry-run --csv your-file.csv
 
 # Option B: Test with configuration file setting
 # (First set "DryRun": true in appsettings.json)
-dotnet run -- --csv your-file.csv
+BatchSMS.exe --csv your-file.csv
 ```
 
 ### 4. **Send Real SMS (Production)**
 ```bash
 # Option A: Production run (ensures dry run is disabled)
-dotnet run -- --csv your-file.csv
+BatchSMS.exe --csv your-file.csv
 
 # Option B: If using configuration file, set "DryRun": false in appsettings.json
 # Configure real Azure Communication Services credentials
 # Send SMS messages
-dotnet run -- --csv your-file.csv
+BatchSMS.exe --csv your-file.csv
 ```
 
 **That's it!** 🎉 Your SMS messages will be sent and reports generated in the `Reports/` folder.
@@ -257,9 +282,15 @@ This application intelligently respects the following ACS SMS rate limits:
 
 ```json
 {
+    "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://your-keyvault-name.vault.azure.net/",
+    "ConnectionStringSecretName": "acs-connection-string",
+    "FromPhoneNumberSecretName": "acs-from-phone-number"
+  },
   "AzureCommunicationServices": {
-    "ConnectionString": "endpoint=https://your-acs-resource.communication.azure.com/;accesskey=your-access-key",
-    "FromPhoneNumber": "+12345678901"
+    "ConnectionString": "",
+    "FromPhoneNumber": ""
   },
   "SmsConfiguration": {
     "EnableDeliveryReports": true,
@@ -318,7 +349,10 @@ You can run BatchSMS without building from source by downloading the latest rele
 ### 1. Download the Latest Release
 
 1. Go to the [Releases page](https://github.com/congiuluc/acs-sms-batch/releases) of this repository.
-2. Download the `BatchSMS.exe` (Windows) or the appropriate single-file executable for your OS from the latest release.
+2. Download the appropriate single-file executable for your operating system:
+   - **Windows**: `BatchSMS.exe` 
+   - **Linux**: `BatchSMS` (Linux x64)
+   - **macOS**: `BatchSMS` (macOS x64)
 3. Download the sample `appsettings.json` and place it in the same folder as the executable.
 4. (Optional) Download a sample CSV file or use your own.
 
@@ -328,38 +362,90 @@ Edit `appsettings.json` with your Azure Communication Services credentials and s
 
 ### 3. Run the Application
 
-Open a terminal in the folder where you downloaded `BatchSMS.exe` and run:
+Open a terminal in the folder where you downloaded the executable and run:
 
-```powershell
+**Windows:**
+```cmd
 # Basic execution
-./BatchSMS.exe
+BatchSMS.exe
 
 # With dry run mode (no SMS sent, no costs)
-./BatchSMS.exe --dry-run
+BatchSMS.exe --dry-run
 
 # With a custom CSV file
-./BatchSMS.exe --csv "your-recipients.csv"
+BatchSMS.exe --csv "your-recipients.csv"
 
 # With dry run and custom CSV file
-./BatchSMS.exe --dry-run --csv "your-recipients.csv"
+BatchSMS.exe --dry-run --csv "your-recipients.csv"
 
 # With a custom output directory
-./BatchSMS.exe --output "reports-folder"
+BatchSMS.exe --output "reports-folder"
 
 # With dry run, custom CSV, and output directory
-./BatchSMS.exe --dry-run --csv "your-recipients.csv" --output "reports-folder"
+BatchSMS.exe --dry-run --csv "your-recipients.csv" --output "reports-folder"
 
 # Validate a CSV file before sending
-./BatchSMS.exe validate your-recipients.csv
+BatchSMS.exe validate your-recipients.csv
+
+# For help and all available options
+BatchSMS.exe --help
 ```
 
-For help and all available options:
+**Linux:**
+```bash
+# Make executable (first time only)
+chmod +x BatchSMS
 
-```powershell
-./BatchSMS.exe --help
+# Basic execution
+./BatchSMS
+
+# With dry run mode (no SMS sent, no costs)
+./BatchSMS --dry-run
+
+# With a custom CSV file
+./BatchSMS --csv "your-recipients.csv"
+
+# With dry run and custom CSV file
+./BatchSMS --dry-run --csv "your-recipients.csv"
+
+# With a custom output directory
+./BatchSMS --output "reports-folder"
+
+# Validate a CSV file before sending
+./BatchSMS validate your-recipients.csv
+
+# For help and all available options
+./BatchSMS --help
 ```
 
-**No .NET installation is required** – the single-file executable includes all dependencies.
+**macOS:**
+```bash
+# Make executable (first time only)
+chmod +x BatchSMS
+
+# Basic execution
+./BatchSMS
+
+# With dry run mode (no SMS sent, no costs)
+./BatchSMS --dry-run
+
+# With a custom CSV file
+./BatchSMS --csv "your-recipients.csv"
+
+# With dry run and custom CSV file
+./BatchSMS --dry-run --csv "your-recipients.csv"
+
+# With a custom output directory
+./BatchSMS --output "reports-folder"
+
+# Validate a CSV file before sending
+./BatchSMS validate your-recipients.csv
+
+# For help and all available options
+./BatchSMS --help
+```
+
+**No .NET installation is required** – the single-file executable includes all dependencies and works on Windows, Linux, and macOS.
 
 ---
 
@@ -517,15 +603,18 @@ Bob Wilson,HR,+393200000004,TechCorp
 
 ## ▶️ **How to Execute Batch SMS**
 
-### Step 1: Build the Application
+> **💡 IMPORTANT**: For production use, always use the compiled single-file executable (`BatchSMS.exe`) rather than `dotnet run` commands. The compiled version is faster, portable, and doesn't require .NET SDK installation.
 
-#### Option A: Standard Build
-```bash
-cd BatchSMS
-dotnet build
-```
+### Step 1: Build the Single-File Executable (Recommended)
 
-#### Option B: Single-File Executable (Recommended for Distribution)
+The preferred way to run BatchSMS is using the pre-compiled single-file executable:
+
+#### Option A: Use Pre-built Release (Fastest)
+1. Download `BatchSMS.exe` from the [GitHub Releases page](https://github.com/congiuluc/acs-sms-batch/releases)
+2. Place it in your working directory with your CSV files
+3. Run directly: `BatchSMS.exe --csv your-file.csv`
+
+#### Option B: Build Single-File Executable
 
 **Windows:**
 ```batch
@@ -533,26 +622,40 @@ dotnet build
 build-single-file.bat
 
 # Or manually
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish-final
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish
 ```
 
-**Linux/macOS:**
+**Linux:**
 ```bash
 # Run the build script
 ./build-single-file.sh
 
 # Or manually for Linux
-dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish-final
+dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish
+```
+
+**macOS:**
+```bash
+# Run the build script
+./build-single-file.sh
 
 # Or manually for macOS
-dotnet publish -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -o publish-final
+dotnet publish -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -o publish
 ```
 
 **Single-File Benefits:**
 - ✅ **Self-contained**: No .NET runtime installation required
-- ✅ **Portable**: Copy `BatchSMS.exe` to any Windows machine and run
+- ✅ **Portable**: Copy `BatchSMS.exe` to any machine and run
 - ✅ **Simple deployment**: Single executable file with all dependencies
 - ✅ **Faster startup**: ReadyToRun optimization included
+- ✅ **Production-ready**: Optimized for performance and reliability
+
+### Step 1B: Developer Build (For Development Only)
+```bash
+cd BatchSMS
+dotnet build
+```
+**Note**: Only use `dotnet run` commands during development. For production, always use the compiled executable.
 
 ### Step 2: Validate Your CSV File (Recommended)
 Before sending SMS messages, validate your CSV file:
@@ -563,13 +666,13 @@ Before sending SMS messages, validate your CSV file:
 > - Valid phone number formats (preferably international format like +393200000001)
 
 ```bash
-# Validate any CSV file format
-dotnet run validate your-file.csv
+# Production: Use compiled executable (RECOMMENDED)
+BatchSMS.exe validate your-file.csv
 
-# Examples
-dotnet run validate sample.csv
-dotnet run validate recipients.csv
-dotnet run validate azure-export.csv
+# Examples with compiled executable
+BatchSMS.exe validate sample.csv
+BatchSMS.exe validate recipients.csv
+BatchSMS.exe validate azure-export.csv
 ```
 
 **Sample Validation Output:**
@@ -594,16 +697,16 @@ RECOMMENDATIONS:
 ### Step 2A: Test with Dry Run Mode (Optional but Recommended)
 Before sending real SMS messages, test your setup with dry run mode:
 
-**Option A: Command Line Flag (Recommended for quick testing)**
+**Production Method: Using Compiled Executable (RECOMMENDED)**
 ```bash
 # Test your complete workflow without sending SMS - no config changes needed
-dotnet run -- --dry-run --csv your-file.csv
-
-# Using single-file executable
 BatchSMS.exe --dry-run --csv your-file.csv
+
+# Test with additional options
+BatchSMS.exe --dry-run --csv your-file.csv --output custom-reports
 ```
 
-**Option B: Configuration File Setting**
+**Alternative: Configuration File Setting**
 ```bash
 # Enable dry run in appsettings.json
 {
@@ -613,8 +716,8 @@ BatchSMS.exe --dry-run --csv your-file.csv
   }
 }
 
-# Test your complete workflow without sending SMS
-dotnet run -- --csv your-file.csv
+# Then run without --dry-run flag
+BatchSMS.exe --csv your-file.csv
 ```
 
 **Dry Run Benefits:**
@@ -625,8 +728,25 @@ dotnet run -- --csv your-file.csv
 - ✅ No Azure credentials required
 
 ### Step 3: Configure Azure Communication Services
-Update `appsettings.json` with your ACS credentials:
+For production environments, you MUST use Azure Key Vault. For development/testing, you can use alternative methods:
 
+**PRODUCTION (MANDATORY - Azure Key Vault):**
+```json
+{
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://your-keyvault-name.vault.azure.net/",
+    "ConnectionStringSecretName": "acs-connection-string",
+    "FromPhoneNumberSecretName": "acs-from-phone-number"
+  },
+  "AzureCommunicationServices": {
+    "ConnectionString": "",
+    "FromPhoneNumber": ""
+  }
+}
+```
+
+**DEVELOPMENT/TESTING ONLY:**
 ```json
 {
   "AzureCommunicationServices": {
@@ -636,16 +756,16 @@ Update `appsettings.json` with your ACS credentials:
 }
 ```
 
-#### 🔐 **Alternative: Environment Variables or Azure Key Vault**
-You can configure credentials using:
+#### 🔐 **Security Best Practices by Environment**
 
-1. **Azure Key Vault (Recommended for Production)**
+1. **PRODUCTION (Azure Key Vault REQUIRED)**
    - Store secrets securely in Azure Key Vault
-   - Uses current user credentials for authentication
-   - Automatic fallback to environment variables if Key Vault unavailable
-   - See [Azure Key Vault Setup Guide](AZURE_KEYVAULT_SETUP.md) for detailed instructions
+   - Use managed identity or service principal authentication
+   - Never store credentials in configuration files
+   - Follow principle of least privilege for Key Vault access
+   - See [Azure Key Vault Setup Guide](AZURE_KEYVAULT_SETUP.md) for complete production setup
 
-2. **Environment Variables (Good for Development/Testing)**
+2. **DEVELOPMENT (Environment Variables or User Secrets)**
 
 **Windows (PowerShell):**
 ```powershell
@@ -663,55 +783,35 @@ export ACS_FROM_PHONE_NUMBER="+12345678901"
 - **Connection String**: `ACS_CONNECTION_STRING`, `AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING`, or `ConnectionStrings__AzureCommunicationServices`
 - **From Phone Number**: `ACS_FROM_PHONE_NUMBER`, `AZURE_COMMUNICATION_SERVICES_FROM_PHONE_NUMBER`, or `FROM_PHONE_NUMBER`
 
-> 💡 **Configuration Priority**: 
-> 1. Azure Key Vault (if enabled)
-> 2. Environment Variables
-> 3. Configuration in `appsettings.json`
+> 💡 **Configuration Priority (Security Hierarchy)**: 
+> 1. **Azure Key Vault** (MANDATORY for production)
+> 2. **Environment Variables** (Development/Testing only)
+> 3. **Configuration in appsettings.json** (Development/Testing only)
+>
+> **⚠️ PRODUCTION SECURITY RULE**: Never use options 2 or 3 in production environments.
 
 ### Step 4: Execute Batch SMS
 
-#### 🎯 **Using Standard Build**
+#### 🎯 **Production Execution (RECOMMENDED)**
+Always use the compiled executable for production deployments:
+
 ```bash
-# Basic execution (uses default configuration)
-dotnet run
+# Navigate to your BatchSMS directory (where BatchSMS.exe is located)
+cd path\to\your\BatchSMS
 
-# Execute with dry run mode (no SMS sent, no costs)
-dotnet run -- --dry-run
-
-# Execute with custom CSV file
-dotnet run -- --csv "path/to/your/recipients.csv"
-
-# Execute with dry run and custom CSV file
-dotnet run -- --dry-run --csv "path/to/your/recipients.csv"
-
-# Execute with custom output directory
-dotnet run -- --output "custom-reports"
-
-# Execute with both custom CSV and output
-dotnet run -- --csv "recipients.csv" --output "reports"
-
-# Execute with dry run, custom CSV, and output
-dotnet run -- --dry-run --csv "recipients.csv" --output "reports"
-```
-
-#### 🎯 **Using Single-File Executable**
-```bash
-# Navigate to the publish directory
-cd publish-final
-
-# Basic execution
+# Basic execution (uses configuration file settings)
 BatchSMS.exe
 
 # Execute with dry run mode (no SMS sent, no costs)
 BatchSMS.exe --dry-run
 
 # Execute with custom CSV file
-BatchSMS.exe --csv "path/to/your/recipients.csv"
+BatchSMS.exe --csv "path\to\your\recipients.csv"
 
 # Execute with dry run and custom CSV file
-BatchSMS.exe --dry-run --csv "path/to/your/recipients.csv"
+BatchSMS.exe --dry-run --csv "path\to\your\recipients.csv"
 
-# Execute with custom output directory  
+# Execute with custom output directory
 BatchSMS.exe --output "custom-reports"
 
 # Execute with both custom CSV and output
@@ -719,24 +819,29 @@ BatchSMS.exe --csv "recipients.csv" --output "reports"
 
 # Execute with dry run, custom CSV, and output
 BatchSMS.exe --dry-run --csv "recipients.csv" --output "reports"
-```
 
-#### 🎯 **Validation Commands**
-```bash
-# Standard build
-dotnet run validate your-file.csv
+# Validate CSV files
+BatchSMS.exe validate "your-file.csv"
 
-# Single-file executable
-BatchSMS.exe validate your-file.csv
-```
-
-#### 🎯 **Get Help and Available Options**
-```bash
-# Standard build
-dotnet run --help
-
-# Single-file executable
+# Get help and all available options
 BatchSMS.exe --help
+```
+
+**Cross-Platform Usage:**
+
+**Windows:**
+```cmd
+BatchSMS.exe --csv "recipients.csv"
+```
+
+**Linux:**
+```bash
+./BatchSMS --csv "recipients.csv"
+```
+
+**macOS:**
+```bash
+./BatchSMS --csv "recipients.csv"
 ```
 
 ### Step 5: Monitor Execution
@@ -808,8 +913,8 @@ Phone,Name
 
 **Execute:**
 ```bash
-dotnet run validate contacts.csv
-dotnet run -- --csv contacts.csv
+BatchSMS.exe validate contacts.csv
+BatchSMS.exe --csv contacts.csv
 ```
 
 ### Example 2: Azure AD Export
@@ -822,8 +927,8 @@ Maria Neri,m.neri@company.com,+393200000004,HR
 
 **Execute:**
 ```bash
-dotnet run validate azure-users.csv
-dotnet run -- --csv azure-users.csv --output "azure-reports"
+BatchSMS.exe validate azure-users.csv
+BatchSMS.exe --csv azure-users.csv --output "azure-reports"
 ```
 
 ### Example 3: Employee Directory
@@ -836,8 +941,8 @@ Sofia Romano,+393200000006,Marketing,TechCorp
 
 **Execute:**
 ```bash
-dotnet run validate employees.csv
-dotnet run -- --csv employees.csv
+BatchSMS.exe validate employees.csv
+BatchSMS.exe --csv employees.csv
 ```
 
 ## 📑 **Reports and Output**
@@ -926,17 +1031,18 @@ The application provides detailed logging at multiple levels:
 
 ### Single-File Executable Details
 - **File Size**: ~83MB (includes all .NET runtime and dependencies)
-- **Target Platform**: Windows x64
-- **No Dependencies**: Works on any Windows machine without .NET installation
-- **Portable**: Copy and run anywhere
+- **Target Platforms**: Windows x64, Linux x64, macOS x64
+- **No Dependencies**: Works on any machine without .NET installation
+- **Portable**: Copy and run anywhere on supported platforms
 
 ### Deployment Options
 
 #### Option 1: Copy Single Executable
 ```bash
-# Copy the entire publish-final folder or just the essential files:
+# Copy the entire publish folder or just the essential files:
 publish/
-├── BatchSMS.exe          # Main executable (required)
+├── BatchSMS.exe          # Main executable (Windows)
+├── BatchSMS              # Main executable (Linux/macOS)
 ├── appsettings.json      # Configuration file (required)
 ├── sample.csv           # Sample data (optional)
 ```
@@ -945,7 +1051,8 @@ publish/
 For production deployment, you only need:
 ```bash
 production-deployment/
-├── BatchSMS.exe
+├── BatchSMS.exe          # Windows executable
+├── BatchSMS              # Linux/macOS executable  
 ├── appsettings.json      # With your real ACS credentials
 └── your-recipients.csv   # Your actual data
 ```
@@ -954,7 +1061,13 @@ production-deployment/
 ```bash
 # Create deployment package
 mkdir "BatchSMS-Distribution"
+
+# Windows
 copy "publish\BatchSMS.exe" "BatchSMS-Distribution\"
+
+# Linux/macOS  
+cp "publish/BatchSMS" "BatchSMS-Distribution/"
+
 copy "production-appsettings.json" "BatchSMS-Distribution\appsettings.json"
 copy "README.md" "BatchSMS-Distribution\"
 
@@ -963,34 +1076,56 @@ copy "README.md" "BatchSMS-Distribution\"
 
 ### Configuration for Different Environments
 
-#### Development (appsettings.json)
+#### Production (appsettings.production.json) - SECURE CONFIGURATION
+```json
+{
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://prod-keyvault.vault.azure.net/",
+    "ConnectionStringSecretName": "acs-connection-string",
+    "FromPhoneNumberSecretName": "acs-from-phone-number"
+  },
+  "AzureCommunicationServices": {
+    "ConnectionString": "",
+    "FromPhoneNumber": ""
+  },
+  "SmsConfiguration": {
+    "DryRun": false,
+    "MessageTemplate": "Production message template"
+  }
+}
+```
+**⚠️ CRITICAL**: Production credentials MUST be stored in Azure Key Vault, never in configuration files.
+
+#### Development (appsettings.development.json) - LOCAL DEVELOPMENT ONLY
 ```json
 {
   "AzureCommunicationServices": {
     "ConnectionString": "endpoint=https://dev-acs.communication.azure.com/;accesskey=dev-key",
     "FromPhoneNumber": "+1234567890"
+  },
+  "SmsConfiguration": {
+    "DryRun": true
   }
 }
 ```
-
-#### Production (appsettings.production.json)
-```json
-{
-  "AzureCommunicationServices": {
-    "ConnectionString": "endpoint=https://prod-acs.communication.azure.com/;accesskey=prod-key",
-    "FromPhoneNumber": "+1987654321"
-  }
-}
-```
+**Note**: Development credentials can be stored in configuration files for local testing only.
 
 ### Running in Different Environments
 ```bash
-# Use specific configuration file
-BatchSMS.exe --configuration appsettings.production.json
+# Windows: Use specific configuration file
+BatchSMS.exe --config appsettings.production.json
 
-# Or set environment variable
-set ASPNETCORE_ENVIRONMENT=Production
-BatchSMS.exe
+# Linux/macOS: Use specific configuration file
+./BatchSMS --config appsettings.production.json
+
+# Or set environment variable (all platforms)
+set ASPNETCORE_ENVIRONMENT=Production  # Windows
+export ASPNETCORE_ENVIRONMENT=Production  # Linux/macOS
+
+# Then run normally
+BatchSMS.exe  # Windows
+./BatchSMS    # Linux/macOS
 ```
 
 ## 📁 **Project Structure**
@@ -1065,25 +1200,441 @@ Program.cs
 
 ### Secure Configuration Management
 ```bash
-# For development - use user secrets
+# For development - use user secrets (LOCAL DEVELOPMENT ONLY)
 dotnet user-secrets init
 dotnet user-secrets set "AzureCommunicationServices:ConnectionString" "your-connection-string"
 
-# For production - use Azure Key Vault or environment variables
-export ACS_CONNECTION_STRING="your-connection-string"
+# For production - MANDATORY Azure Key Vault (PRODUCTION REQUIREMENT)
+# Store in Azure Key Vault:
+az keyvault secret set --vault-name your-keyvault --name "acs-connection-string" --value "your-connection-string"
+az keyvault secret set --vault-name your-keyvault --name "acs-from-phone-number" --value "your-phone-number"
+
+# Configure application to use Key Vault:
+{
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://your-keyvault.vault.azure.net/"
+  }
+}
 ```
 
 ### Data Protection Guidelines
 - 📱 **Phone numbers**: Store securely, comply with GDPR/local regulations
-- 🔐 **Connection strings**: Never commit to source control
-- 📋 **CSV files**: Handle according to company data policies
-- 📊 **Reports**: Protect output files containing recipient data
+- 🔐 **Connection strings**: 
+  - **PRODUCTION**: MUST be stored in Azure Key Vault
+  - **DEVELOPMENT**: Use user secrets or environment variables only
+  - **NEVER**: Store in configuration files for production
+- 📋 **CSV files**: Handle according to company data policies, encrypt sensitive data
+- 📊 **Reports**: Protect output files containing recipient data, consider encryption at rest
 
 ### Compliance Features
 - ✅ **Audit logging**: All operations are logged with timestamps
-- ✅ **Error tracking**: Failed attempts are recorded for investigation
+- ✅ **Error tracking**: Failed attempts are recorded for investigation  
 - ✅ **Data validation**: Phone number format validation
 - ✅ **Rate limiting**: Respects Azure Communication Services limits
+- ✅ **Secure credential storage**: Azure Key Vault integration for production
+- ✅ **Zero credential exposure**: No sensitive data in configuration files for production
+
+---
+
+## 👨‍💻 **Developer Section**
+
+This section is for developers who want to build, modify, or contribute to the BatchSMS application.
+
+### 🛠️ **Prerequisites for Development**
+
+- .NET 8.0 SDK (latest version)
+- Visual Studio Code, Visual Studio, or JetBrains Rider
+- Git for version control
+- Azure Communication Services resource (for testing)
+
+### 🏗️ **Development Setup**
+
+#### 1. Clone and Setup
+```bash
+# Clone the repository
+git clone https://github.com/congiuluc/acs-sms-batch.git
+cd acs-sms-batch
+
+# Restore dependencies
+dotnet restore
+
+# Build the solution
+dotnet build
+```
+
+#### 2. Configure Development Environment
+```bash
+# Setup user secrets for development (DEVELOPMENT ONLY)
+dotnet user-secrets init
+dotnet user-secrets set "AzureCommunicationServices:ConnectionString" "your-dev-connection-string"
+dotnet user-secrets set "AzureCommunicationServices:FromPhoneNumber" "+1234567890"
+
+# Or create appsettings.Development.json (DEVELOPMENT ONLY - not committed to git)
+# Copy appsettings.json to appsettings.Development.json and modify
+
+# For production deployment testing, configure Azure Key Vault:
+# (Follow production Azure Key Vault setup from main documentation)
+```
+
+#### 3. Run in Development Mode
+```bash
+# Run with development configuration
+dotnet run --project src/BatchSMS.csproj
+
+# Run with specific arguments
+dotnet run --project src/BatchSMS.csproj -- --dry-run --csv samples/sample.csv
+
+# Run with debug logging
+dotnet run --project src/BatchSMS.csproj -- --csv samples/sample.csv
+# (Set environment variable: Logging__LogLevel__Default=Debug)
+```
+
+### 🧪 **Development Commands**
+
+#### Build Commands
+```bash
+# Clean solution
+dotnet clean
+
+# Build solution
+dotnet build
+
+# Build for specific configuration
+dotnet build -c Release
+dotnet build -c Debug
+
+# Build for specific runtime
+dotnet build -r win-x64
+dotnet build -r linux-x64
+```
+
+#### Test Commands
+```bash
+# Run unit tests (when available)
+dotnet test
+
+# Run with coverage
+dotnet test --collect:"XPlat Code Coverage"
+
+# Run specific test project
+dotnet test tests/BatchSMS.Tests/
+```
+
+#### Publishing Commands
+```bash
+# Publish for framework-dependent deployment
+dotnet publish -c Release
+
+# Publish self-contained single-file (Windows)
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o publish/win-x64
+
+# Publish self-contained single-file (Linux)
+dotnet publish -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o publish/linux-x64
+
+# Publish self-contained single-file (macOS)
+dotnet publish -c Release -r osx-x64 --self-contained true -p:PublishSingleFile=true -o publish/osx-x64
+
+# Publish ReadyToRun optimized
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishReadyToRun=true -o publish/win-x64-optimized
+```
+
+#### Development Utilities
+```bash
+# Format code
+dotnet format
+
+# List project dependencies
+dotnet list package
+
+# Update packages
+dotnet restore --force
+
+# Clean and rebuild
+dotnet clean && dotnet build
+```
+
+### 🏛️ **Project Architecture for Developers**
+
+#### Solution Structure
+```
+src/
+├── Configuration/
+│   └── AppConfig.cs              # Configuration models and validation
+├── Models/
+│   ├── Result.cs                 # Functional programming Result pattern
+│   └── SmsModels.cs             # SMS-related DTOs and models
+├── Services/
+│   ├── ISmsService.cs           # SMS service interface
+│   ├── SmsService.cs            # Core SMS implementation
+│   ├── EnhancedSmsService.cs    # Enhanced SMS with rate limiting
+│   ├── ICsvReaderService.cs     # CSV reading interface
+│   ├── CsvReaderService.cs      # CSV processing implementation
+│   ├── IReportingService.cs     # Reporting interface
+│   ├── ReportingService.cs      # Report generation implementation
+│   ├── RateLimitingService.cs   # Rate limiting and circuit breaker
+│   ├── RealTimeCsvWriter.cs     # Thread-safe CSV writing
+│   └── IProgressReporter.cs     # Progress tracking interfaces
+├── Tools/
+│   └── CsvValidatorTool.cs      # CSV validation utility
+├── Utilities/
+│   └── PhoneNumberValidator.cs  # Phone number validation
+└── Program.cs                   # Application entry point and DI setup
+```
+
+#### Key Design Patterns
+- **Result Pattern**: Functional error handling without exceptions
+- **Dependency Injection**: Loose coupling between services
+- **Strategy Pattern**: Different SMS sending strategies
+- **Observer Pattern**: Progress reporting and real-time updates
+- **Circuit Breaker Pattern**: Fault tolerance for external services
+
+#### Adding New Features
+1. **Create interfaces** in appropriate service folders
+2. **Implement services** following existing patterns
+3. **Register in DI container** in `Program.cs`
+4. **Add configuration** options in `AppConfig.cs`
+5. **Write unit tests** (when test project exists)
+6. **Update documentation** accordingly
+
+### 🔧 **Development Best Practices**
+
+#### Code Quality
+```bash
+# Use consistent formatting
+dotnet format
+
+# Follow C# naming conventions
+# Use PascalCase for public members
+# Use camelCase for private fields and parameters
+
+# Add XML documentation comments
+/// <summary>
+/// Sends SMS messages to multiple recipients with rate limiting
+/// </summary>
+/// <param name="recipients">List of recipients to send messages to</param>
+/// <returns>Result containing success/failure information</returns>
+```
+
+#### Configuration Management
+```bash
+# Development: Use user secrets (DEVELOPMENT ONLY)
+dotnet user-secrets set "key" "value"
+
+# Production: Use Azure Key Vault (PRODUCTION MANDATORY)
+az keyvault secret set --vault-name your-keyvault --name "key" --value "value"
+
+# Staging/Testing: Use environment variables (TESTING ONLY)
+export ACS_CONNECTION_STRING="value"
+
+# Production Configuration Example:
+{
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://your-keyvault.vault.azure.net/"
+  }
+}
+```
+
+#### Logging and Debugging
+```bash
+# Enable debug logging for development
+export Logging__LogLevel__Default=Debug
+export Logging__LogLevel__BatchSMS=Debug
+
+# Or use launch configuration in VS Code/Visual Studio
+```
+
+---
+
+## 📋 **Commands Reference**
+
+This section provides a quick reference for all available BatchSMS commands and options.
+
+### 🚀 **Production Commands (Compiled Executable)**
+
+Use these commands with the compiled `BatchSMS.exe` for production deployments:
+
+#### Basic Operations
+```bash
+# Display help and all available options
+BatchSMS.exe --help
+
+# Basic execution with default settings
+BatchSMS.exe
+
+# Dry run mode (test without sending SMS)
+BatchSMS.exe --dry-run
+
+# Process specific CSV file
+BatchSMS.exe --csv "recipients.csv"
+
+# Set custom output directory
+BatchSMS.exe --output "reports"
+
+# Combine dry run with custom CSV and output
+BatchSMS.exe --dry-run --csv "recipients.csv" --output "reports"
+```
+
+#### CSV Validation
+```bash
+# Validate CSV file before processing
+BatchSMS.exe validate "recipients.csv"
+
+# Validate with detailed output
+BatchSMS.exe validate "recipients.csv" --verbose
+
+# Validate multiple files
+BatchSMS.exe validate "file1.csv"
+BatchSMS.exe validate "file2.csv"
+```
+
+#### Advanced Options
+```bash
+# Process with custom configuration file
+BatchSMS.exe --config "appsettings.production.json" --csv "recipients.csv"
+
+# Override message template via command line
+BatchSMS.exe --csv "recipients.csv" --template "Hello {DisplayName}, welcome!"
+
+# Set log level for troubleshooting
+BatchSMS.exe --csv "recipients.csv" --log-level Debug
+
+# Process with custom batch size
+BatchSMS.exe --csv "recipients.csv" --batch-size 25
+
+# Set custom rate limit
+BatchSMS.exe --csv "recipients.csv" --rate-limit 100
+```
+
+### 🔧 **Development Commands (dotnet CLI)**
+
+Use these commands during development with the .NET SDK:
+
+#### Build and Run
+```bash
+# Build the project
+dotnet build
+
+# Run with default settings
+dotnet run
+
+# Run with arguments (note the -- separator)
+dotnet run -- --help
+dotnet run -- --dry-run
+dotnet run -- --csv "test.csv"
+dotnet run -- --dry-run --csv "test.csv" --output "dev-reports"
+
+# Run with specific configuration
+dotnet run -c Release
+dotnet run -c Debug
+```
+
+#### CSV Validation (Development)
+```bash
+# Validate CSV file
+dotnet run validate "test.csv"
+
+# Validate with project specification
+dotnet run --project src/BatchSMS.csproj validate "test.csv"
+```
+
+#### Development Utilities
+```bash
+# Clean and build
+dotnet clean
+dotnet build
+
+# Restore packages
+dotnet restore
+
+# Run with debug logging
+dotnet run -- --csv "test.csv" --log-level Debug
+
+# Format code
+dotnet format
+
+# List packages
+dotnet list package
+```
+
+### 📝 **Command Line Parameters**
+
+#### Required Parameters
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `--csv <file>` | Path to CSV file to process | `--csv "recipients.csv"` |
+
+#### Optional Parameters
+| Parameter | Description | Default | Example |
+|-----------|-------------|---------|---------|
+| `--output <dir>` | Output directory for reports | `Reports/` | `--output "custom-reports"` |
+| `--dry-run` | Test mode (no SMS sent) | `false` | `--dry-run` |
+| `--config <file>` | Custom configuration file | `appsettings.json` | `--config "prod.json"` |
+| `--template <text>` | Override message template | From config | `--template "Hi {DisplayName}!"` |
+| `--batch-size <num>` | Number per batch | From config | `--batch-size 25` |
+| `--rate-limit <num>` | Requests per minute | From config | `--rate-limit 100` |
+| `--log-level <level>` | Logging level | `Information` | `--log-level Debug` |
+| `--help` | Display help information | - | `--help` |
+
+#### Special Commands
+| Command | Description | Example |
+|---------|-------------|---------|
+| `validate <file>` | Validate CSV file only | `validate "test.csv"` |
+| `--version` | Show application version | `--version` |
+
+### 🎯 **Common Usage Patterns**
+
+#### Quick Test Workflow
+```bash
+# 1. Validate your CSV file
+BatchSMS.exe validate "my-recipients.csv"
+
+# 2. Test with dry run
+BatchSMS.exe --dry-run --csv "my-recipients.csv"
+
+# 3. Send real SMS (after validation)
+BatchSMS.exe --csv "my-recipients.csv"
+```
+
+#### Production Deployment
+```bash
+# 1. Use specific output directory
+BatchSMS.exe --csv "production-recipients.csv" --output "production-reports"
+
+# 2. Use production configuration
+BatchSMS.exe --config "appsettings.production.json" --csv "recipients.csv"
+
+# 3. Monitor with debug logging if needed
+BatchSMS.exe --csv "recipients.csv" --log-level Debug --output "debug-reports"
+```
+
+#### Batch Processing Multiple Files
+```bash
+# Validate all files first
+BatchSMS.exe validate "file1.csv"
+BatchSMS.exe validate "file2.csv"
+BatchSMS.exe validate "file3.csv"
+
+# Process each file with separate reports
+BatchSMS.exe --csv "file1.csv" --output "reports-file1"
+BatchSMS.exe --csv "file2.csv" --output "reports-file2"
+BatchSMS.exe --csv "file3.csv" --output "reports-file3"
+```
+
+#### Environment-Specific Commands
+```bash
+# Development environment
+BatchSMS.exe --dry-run --csv "test-data.csv" --log-level Debug
+
+# Staging environment
+BatchSMS.exe --config "appsettings.staging.json" --csv "staging-recipients.csv"
+
+# Production environment
+BatchSMS.exe --config "appsettings.production.json" --csv "production-recipients.csv" --output "production-reports"
+```
+
+---
 
 ## 📈 **Performance and Scalability**
 
@@ -1313,13 +1864,15 @@ Error: CSV file not found: myfile.csv
 ### 1. Always Validate First
 ```bash
 # Always run validation before actual SMS sending
-dotnet run validate your-file.csv
+BatchSMS.exe validate your-file.csv  # Windows
+./BatchSMS validate your-file.csv    # Linux/macOS
 ```
 
 ### 2. Test with Small Batches
 ```bash
 # Start with a small test file (5-10 numbers)
-dotnet run -- --csv "test-batch.csv"
+BatchSMS.exe --csv "test-batch.csv"  # Windows
+./BatchSMS --csv "test-batch.csv"    # Linux/macOS
 ```
 
 ### 3. Monitor Rate Limits
