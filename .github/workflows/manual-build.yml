@@ -1,0 +1,122 @@
+name: Manual Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build for'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+        - all
+        - windows
+        - linux
+        - macos
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/BatchSMS.csproj'
+
+jobs:
+  manual-build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      
+    - name: Publish Windows x64
+      if: github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows'
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime win-x64 \
+          --self-contained true \
+          --output ./publish/win-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Publish Linux x64
+      if: github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux'
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime linux-x64 \
+          --self-contained true \
+          --output ./publish/linux-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Publish macOS (Intel + Apple Silicon)
+      if: github.event.inputs.platform == 'all' || github.event.inputs.platform == 'macos'
+      run: |
+        # macOS Intel
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime osx-x64 \
+          --self-contained true \
+          --output ./publish/osx-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+        # macOS Apple Silicon
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime osx-arm64 \
+          --self-contained true \
+          --output ./publish/osx-arm64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Copy configuration files
+      run: |
+        # Copy essential files to each existing platform directory
+        for dir in ./publish/*/; do
+          if [ -d "$dir" ]; then
+            platform=$(basename "$dir")
+            echo "Copying files to $platform..."
+            cp src/appsettings.json "$dir"
+            cp README.md "$dir"
+            cp LICENSE "$dir"
+            [ -f "samples/sample.csv" ] && cp samples/sample.csv "$dir" || echo "sample.csv not found"
+            [ -f "secrets.json.example" ] && cp secrets.json.example "$dir" || echo "secrets.json.example not found"
+          fi
+        done
+        
+    - name: Create archives
+      run: |
+        cd publish
+        
+        # Create archives for existing directories
+        [ -d "win-x64" ] && zip -r ../BatchSMS-manual-win-x64.zip win-x64/
+        [ -d "linux-x64" ] && tar -czf ../BatchSMS-manual-linux-x64.tar.gz linux-x64/
+        [ -d "osx-x64" ] && tar -czf ../BatchSMS-manual-macos-x64.tar.gz osx-x64/
+        [ -d "osx-arm64" ] && tar -czf ../BatchSMS-manual-macos-arm64.tar.gz osx-arm64/
+        
+        cd ..
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: BatchSMS-manual-build-${{ github.event.inputs.platform }}-${{ github.run_number }}
+        path: |
+          BatchSMS-manual-*.zip
+          BatchSMS-manual-*.tar.gz
+          publish/
+        retention-days: 14
