@@ -1,0 +1,204 @@
+name: Create Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Triggers on version tags like v1.0.0, v2.1.3, etc.
+  workflow_dispatch:  # Allows manual triggering from GitHub UI
+    inputs:
+      tag:
+        description: 'Tag version for the release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/BatchSMS.csproj'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # Required for creating releases
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      
+    - name: Test application (if tests exist)
+      run: |
+        if [ -d "tests" ] || find . -name "*.Tests.csproj" -o -name "*Test*.csproj" | grep -q .; then
+          dotnet test --configuration Release --no-build --verbosity normal
+        else
+          echo "No tests found, skipping test step"
+        fi
+      
+    - name: Publish Windows x64
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime win-x64 \
+          --self-contained true \
+          --output ./publish/win-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Publish Linux x64
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime linux-x64 \
+          --self-contained true \
+          --output ./publish/linux-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Publish macOS x64
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime osx-x64 \
+          --self-contained true \
+          --output ./publish/osx-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Publish macOS ARM64
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime osx-arm64 \
+          --self-contained true \
+          --output ./publish/osx-arm64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Copy configuration files to publish directories
+      run: |
+        # Copy essential files to each platform directory
+        for platform in win-x64 linux-x64 osx-x64 osx-arm64; do
+          cp src/appsettings.json ./publish/$platform/
+          cp samples/sample.csv ./publish/$platform/ 2>/dev/null || echo "sample.csv not found, skipping"
+          cp README.md ./publish/$platform/
+          cp LICENSE ./publish/$platform/
+          cp secrets.json.example ./publish/$platform/ 2>/dev/null || echo "secrets.json.example not found, skipping"
+        done
+        
+    - name: Create release packages
+      run: |
+        cd publish
+        
+        # Create Windows package
+        zip -r ../BatchSMS-win-x64.zip win-x64/
+        
+        # Create Linux package
+        tar -czf ../BatchSMS-linux-x64.tar.gz linux-x64/
+        
+        # Create macOS x64 package
+        tar -czf ../BatchSMS-macos-x64.tar.gz osx-x64/
+        
+        # Create macOS ARM64 package
+        tar -czf ../BatchSMS-macos-arm64.tar.gz osx-arm64/
+        
+        cd ..
+        
+    - name: Get tag name
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Extract version from tag
+      id: get_version
+      run: |
+        TAG="${{ steps.get_tag.outputs.tag }}"
+        VERSION=${TAG#v}  # Remove 'v' prefix
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        cat << 'EOF' > release_notes.md
+        ## BatchSMS ${{ steps.get_version.outputs.version }}
+        
+        ### 🚀 Features
+        - High-performance .NET 8.0 console application for bulk SMS sending
+        - Azure Communication Services integration with rate limiting
+        - Dynamic CSV processing with auto-column detection
+        - Real-time progress tracking and comprehensive reporting
+        - Single-file executable deployment (no .NET runtime required)
+        
+        ### 📦 Download Options
+        
+        Choose the appropriate package for your operating system:
+        
+        - **Windows**: `BatchSMS-win-x64.zip` - For Windows 10/11 (x64)
+        - **Linux**: `BatchSMS-linux-x64.tar.gz` - For Linux distributions (x64)
+        - **macOS Intel**: `BatchSMS-macos-x64.tar.gz` - For Intel-based Macs
+        - **macOS Apple Silicon**: `BatchSMS-macos-arm64.tar.gz` - For M1/M2/M3 Macs
+        
+        ### 🔧 Quick Setup
+        
+        1. Download the package for your platform
+        2. Extract the archive
+        3. Update `appsettings.json` with your Azure Communication Services credentials
+        4. Run the application: `./BatchSMS` (Linux/macOS) or `BatchSMS.exe` (Windows)
+        
+        ### 📋 System Requirements
+        
+        - **No .NET runtime installation required** - Self-contained executables
+        - Azure Communication Services resource with SMS capabilities
+        - CSV file with phone numbers and recipient data
+        
+        ### 📚 Documentation
+        
+        Complete setup and usage instructions are included in the `README.md` file within each package.
+        
+        ### 🆘 Support
+        
+        For issues and questions, please refer to the README.md file or create an issue in this repository.
+        EOF
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_tag.outputs.tag }}
+        name: BatchSMS ${{ steps.get_version.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: false
+        files: |
+          BatchSMS-win-x64.zip
+          BatchSMS-linux-x64.tar.gz
+          BatchSMS-macos-x64.tar.gz
+          BatchSMS-macos-arm64.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: BatchSMS-${{ steps.get_version.outputs.version }}-all-platforms
+        path: |
+          BatchSMS-*.zip
+          BatchSMS-*.tar.gz
+        retention-days: 30
