@@ -1,0 +1,38 @@
+# Production Configuration Template
+# Copy this file to appsettings.Production.json and update with your production values
+
+{
+  "AzureCommunicationServices": {
+    "ConnectionString": "#{ACS_CONNECTION_STRING}#",
+    "FromPhoneNumber": "#{ACS_FROM_PHONE_NUMBER}#"
+  },
+  "SmsConfiguration": {
+    "EnableDeliveryReports": true,
+    "MessageTemplate": "#{SMS_MESSAGE_TEMPLATE}#"
+  },
+  "RateLimiting": {
+    "MaxConcurrentRequests": 20,
+    "RequestsPerMinute": 6000,
+    "DelayBetweenBatchesMs": 500,
+    "BatchSize": 100,
+    "RetryAttempts": 5,
+    "RetryDelayMs": 3000,
+    "CircuitBreakerFailureThreshold": 10,
+    "CircuitBreakerTimeoutSeconds": 60
+  },
+  "CsvConfiguration": {
+    "FilePath": "#{CSV_FILE_PATH}#",
+    "HasHeaderRecord": true,
+    "PhoneNumberColumn": "AuthMethodMobileNumbers",
+    "DisplayNameColumn": "DisplayName",
+    "SkipEmptyPhoneNumbers": true
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "Microsoft.Hosting.Lifetime": "Information",
+      "BatchSMS": "Information"
+    }
+  }
+}
