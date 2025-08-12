@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  PROJECT_PATH: 'src/BatchSMS.csproj'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+      
+    - name: Build application
+      run: dotnet build ${{ env.PROJECT_PATH }} --configuration Release --no-restore
+      
+    - name: Test application (if tests exist)
+      run: |
+        if [ -d "tests" ] || find . -name "*.Tests.csproj" -o -name "*Test*.csproj" | grep -q .; then
+          dotnet test --configuration Release --no-build --verbosity normal
+        else
+          echo "No tests found, skipping test step"
+        fi
+        
+    - name: Test publish for Windows
+      run: |
+        dotnet publish ${{ env.PROJECT_PATH }} \
+          --configuration Release \
+          --runtime win-x64 \
+          --self-contained true \
+          --output ./test-publish/win-x64 \
+          -p:PublishSingleFile=true \
+          -p:PublishTrimmed=false \
+          -p:PublishReadyToRun=true
+          
+    - name: Verify executable was created
+      run: |
+        if [ -f "./test-publish/win-x64/BatchSMS.exe" ]; then
+          echo "✅ Windows executable created successfully"
+          ls -la ./test-publish/win-x64/BatchSMS.exe
+        else
+          echo "❌ Windows executable not found"
+          ls -la ./test-publish/win-x64/
+          exit 1
+        fi
+        
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      if: success()
+      with:
+        name: BatchSMS-ci-build-${{ github.sha }}
+        path: ./test-publish/win-x64/
+        retention-days: 7
