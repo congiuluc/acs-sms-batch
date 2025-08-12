@@ -2,6 +2,12 @@
 # Copy this file to appsettings.Production.json and update with your production values
 
 {
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "#{AZURE_KEYVAULT_URI}#",
+    "ConnectionStringSecretName": "acs-connection-string",
+    "FromPhoneNumberSecretName": "acs-from-phone-number"
+  },
   "AzureCommunicationServices": {
     "ConnectionString": "#{ACS_CONNECTION_STRING}#",
     "FromPhoneNumber": "#{ACS_FROM_PHONE_NUMBER}#"
@@ -32,7 +38,8 @@
       "Default": "Information",
       "Microsoft": "Warning",
       "Microsoft.Hosting.Lifetime": "Information",
-      "BatchSMS": "Information"
+      "BatchSMS": "Information",
+      "BatchSMS.Services.AzureConfigurationService": "Information"
     }
   }
 }

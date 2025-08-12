@@ -1,4 +1,4 @@
-# BatchSMS - Azure Communication Services Bulk SMS Sender
+﻿# BatchSMS - Azure Communication Services Bulk SMS Sender
 
 > **Version:** 2.0.0 | **Last Updated:** August 2025 | **Target Framework:** .NET 8.0
 
@@ -6,7 +6,9 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 
 ## 📋 Table of Contents
 
-- [🚀 Quick Start (5 Minutes)](#-quick-start-5-minutes)
+- [🔐 Azure Key Vault Configuration (Recommended for Production)](#-azure-key-vault-configuration-recommended-for-production)
+- [🧪 Dry Run Mode - Test Without Sending SMS](#-dry-run-mode---test-without-sending-sms)
+- [�🚀 Quick Start (5 Minutes)](#-quick-start-5-minutes)
 - [⭐ Key Features](#-key-features)
 - [📊 Azure Communication Services Rate Limits](#-azure-communication-services-rate-limits)
 - [🛠️ Prerequisites](#️-prerequisites)
@@ -27,6 +29,8 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 
 ### Core Functionality
 - ✅ **Enterprise-grade bulk SMS sending** from CSV files with flexible format support
+- ✅ **Dry run mode** - test your CSV files and templates without sending SMS or incurring costs
+- ✅ **Azure Key Vault integration** - secure credential storage for production environments
 - ✅ **Dynamic CSV column detection** - automatically maps any CSV structure to phone numbers
 - ✅ **Real-time CSV result writing** - results written immediately as SMS are sent
 - ✅ **Italian phone number normalization** - automatically adds +39 prefix for Italian numbers
@@ -56,6 +60,112 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 - ✅ **Single-file executable** - portable deployment with embedded dependencies
 - ✅ **Configuration-driven design** - flexible settings without code changes
 
+## 🔐 Azure Key Vault Configuration (Recommended for Production)
+
+**IMPORTANT**: For production environments, use Azure Key Vault to securely store your Azure Communication Services credentials instead of storing them in configuration files.
+
+### Quick Azure Key Vault Setup
+
+1. **Create Key Vault and store secrets:**
+```bash
+# Create Key Vault
+az keyvault create --name MyKeyVaultName --resource-group MyResourceGroup --location eastus
+
+# Store secrets
+az keyvault secret set --vault-name MyKeyVaultName --name "acs-connection-string" --value "endpoint=https://your-acs-resource.communication.azure.com/;accesskey=your-access-key"
+az keyvault secret set --vault-name MyKeyVaultName --name "acs-from-phone-number" --value "+1234567890"
+
+# Grant access
+az role assignment create --role "Key Vault Secrets User" --assignee <your-user-id> --scope /subscriptions/<subscription-id>/resourceGroups/MyResourceGroup/providers/Microsoft.KeyVault/vaults/MyKeyVaultName
+```
+
+2. **Enable Key Vault in appsettings.json:**
+```json
+{
+  "KeyVault": {
+    "Enabled": true,
+    "VaultUri": "https://MyKeyVaultName.vault.azure.net/",
+    "ConnectionStringSecretName": "acs-connection-string",
+    "FromPhoneNumberSecretName": "acs-from-phone-number"
+  }
+}
+```
+
+3. **Authenticate with Azure:**
+```bash
+az login
+```
+
+📋 **For complete Azure Key Vault setup instructions, see:** [AZURE_KEYVAULT_SETUP.md](AZURE_KEYVAULT_SETUP.md)
+
+## 🧪 Dry Run Mode - Test Without Sending SMS
+
+**NEW FEATURE**: Test your CSV files and message templates without actually sending SMS messages or incurring costs.
+
+### Enable Dry Run Mode
+
+**Option 1: Configuration File (Persistent)**
+
+In your `appsettings.json`, set:
+```json
+{
+  "SmsConfiguration": {
+    "DryRun": true,
+    "MessageTemplate": "Hello {DisplayName}, your order #{OrderID} for {ProductName} is ready!"
+  }
+}
+```
+
+**Option 2: Command Line Flag (One-time)**
+
+Use the `--dry-run` command line flag to enable dry run mode for a single execution:
+
+```bash
+# Standard build - one-time dry run
+dotnet run -- --dry-run --csv your-file.csv
+
+# Single-file executable - one-time dry run
+BatchSMS.exe --dry-run --csv your-file.csv
+
+# Combine with other options
+BatchSMS.exe --dry-run --csv recipients.csv --output reports-folder
+```
+
+**Benefits of Command Line Flag:**
+- ✅ **No configuration changes** - keeps your settings for production
+- ✅ **Quick testing** - test any CSV file instantly
+- ✅ **Overrides configuration** - works even if `DryRun: false` in appsettings.json
+- ✅ **Perfect for validation** - test before switching to production mode
+
+### What Dry Run Does
+
+✅ **Validates** all your CSV data and phone numbers  
+✅ **Tests** message template substitution with real data  
+✅ **Simulates** SMS delivery timing and success/failure scenarios  
+✅ **Generates** complete reports showing what would happen  
+✅ **No SMS sent** - no Azure Communication Services charges  
+✅ **No Azure credentials required** for testing  
+
+### Dry Run Example Output
+
+```
+info: DRY RUN: SMS would be sent successfully to +393200000001 in 245ms. MessageId: dry-run-a1b2c3d4
+info: DRY RUN: SMS would be sent successfully to +393200000002 in 189ms. MessageId: dry-run-e5f6g7h8
+info: === BATCH SMS SUMMARY ===
+info: DRY RUN MODE: No actual SMS messages were sent
+info: Total Recipients: 50
+info: Successful Sends: 47 (94.00%)
+info: Failed Sends: 3 (6.00%)
+```
+
+### Dry Run Best Practices
+
+1. **Always test first**: Run in dry mode before live sending
+2. **Validate large files**: Test with your complete CSV before production
+3. **Template testing**: Verify message templates work with all your data
+4. **No credentials needed**: Test without valid Azure Communication Services setup
+
+
 ## 🚀 Quick Start (5 Minutes)
 
 ### 1. **Download & Configure**
@@ -63,7 +173,15 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 # Clone or download the project
 cd BatchSMS
 
-# Update appsettings.json with your Azure credentials
+# For testing: Enable dry run mode in appsettings.json
+{
+  "SmsConfiguration": {
+    "DryRun": true,
+    "MessageTemplate": "Hello {DisplayName}, welcome to our service!"
+  }
+}
+
+# For production: Configure Azure credentials (see Azure Key Vault section above)
 {
   "AzureCommunicationServices": {
     "ConnectionString": "endpoint=https://your-acs-resource.communication.azure.com/;accesskey=your-key",
@@ -80,11 +198,26 @@ PhoneNumber,DisplayName
 +393200000002,Anna Bianchi
 ```
 
-### 3. **Validate & Send**
+### 3. **Test with Dry Run (No SMS sent)**
 ```bash
 # Validate your CSV file
 dotnet run validate your-file.csv
 
+# Option A: Quick test with command line flag (no config changes needed)
+dotnet run -- --dry-run --csv your-file.csv
+
+# Option B: Test with configuration file setting
+# (First set "DryRun": true in appsettings.json)
+dotnet run -- --csv your-file.csv
+```
+
+### 4. **Send Real SMS (Production)**
+```bash
+# Option A: Production run (ensures dry run is disabled)
+dotnet run -- --csv your-file.csv
+
+# Option B: If using configuration file, set "DryRun": false in appsettings.json
+# Configure real Azure Communication Services credentials
 # Send SMS messages
 dotnet run -- --csv your-file.csv
 ```
@@ -130,7 +263,8 @@ This application intelligently respects the following ACS SMS rate limits:
   },
   "SmsConfiguration": {
     "EnableDeliveryReports": true,
-    "MessageTemplate": "Hello {DisplayName}, this is a personalized message from our service. Thank you for joining us!"
+    "MessageTemplate": "Hello {DisplayName}, this is a personalized message from our service. Thank you for joining us!",
+    "DryRun": false
   },
   "RateLimiting": {
     "MaxConcurrentRequests": 10,
@@ -161,6 +295,7 @@ This application intelligently respects the following ACS SMS rate limits:
 #### SMS Configuration
 - `EnableDeliveryReports`: Enable delivery status reports
 - `MessageTemplate`: SMS message template with placeholders
+- `DryRun`: Enable dry run mode (test without sending SMS, default: false)
 
 #### Rate Limiting
 - `MaxConcurrentRequests`: Maximum concurrent SMS requests (default: 10)
@@ -199,11 +334,20 @@ Open a terminal in the folder where you downloaded `BatchSMS.exe` and run:
 # Basic execution
 ./BatchSMS.exe
 
+# With dry run mode (no SMS sent, no costs)
+./BatchSMS.exe --dry-run
+
 # With a custom CSV file
 ./BatchSMS.exe --csv "your-recipients.csv"
 
+# With dry run and custom CSV file
+./BatchSMS.exe --dry-run --csv "your-recipients.csv"
+
 # With a custom output directory
 ./BatchSMS.exe --output "reports-folder"
+
+# With dry run, custom CSV, and output directory
+./BatchSMS.exe --dry-run --csv "your-recipients.csv" --output "reports-folder"
 
 # Validate a CSV file before sending
 ./BatchSMS.exe validate your-recipients.csv
@@ -447,6 +591,39 @@ RECOMMENDATIONS:
   • 5 records are ready for SMS sending
 ```
 
+### Step 2A: Test with Dry Run Mode (Optional but Recommended)
+Before sending real SMS messages, test your setup with dry run mode:
+
+**Option A: Command Line Flag (Recommended for quick testing)**
+```bash
+# Test your complete workflow without sending SMS - no config changes needed
+dotnet run -- --dry-run --csv your-file.csv
+
+# Using single-file executable
+BatchSMS.exe --dry-run --csv your-file.csv
+```
+
+**Option B: Configuration File Setting**
+```bash
+# Enable dry run in appsettings.json
+{
+  "SmsConfiguration": {
+    "DryRun": true,
+    "MessageTemplate": "Hello {DisplayName}, your order #{OrderID} for {ProductName} is ready!"
+  }
+}
+
+# Test your complete workflow without sending SMS
+dotnet run -- --csv your-file.csv
+```
+
+**Dry Run Benefits:**
+- ✅ No SMS sent, no Azure charges
+- ✅ Validates all phone numbers and data
+- ✅ Tests message template substitution
+- ✅ Generates complete reports
+- ✅ No Azure credentials required
+
 ### Step 3: Configure Azure Communication Services
 Update `appsettings.json` with your ACS credentials:
 
@@ -459,8 +636,16 @@ Update `appsettings.json` with your ACS credentials:
 }
 ```
 
-#### 🔐 **Alternative: Environment Variables**
-You can also set credentials using environment variables (useful for production deployments):
+#### 🔐 **Alternative: Environment Variables or Azure Key Vault**
+You can configure credentials using:
+
+1. **Azure Key Vault (Recommended for Production)**
+   - Store secrets securely in Azure Key Vault
+   - Uses current user credentials for authentication
+   - Automatic fallback to environment variables if Key Vault unavailable
+   - See [Azure Key Vault Setup Guide](AZURE_KEYVAULT_SETUP.md) for detailed instructions
+
+2. **Environment Variables (Good for Development/Testing)**
 
 **Windows (PowerShell):**
 ```powershell
@@ -478,7 +663,10 @@ export ACS_FROM_PHONE_NUMBER="+12345678901"
 - **Connection String**: `ACS_CONNECTION_STRING`, `AZURE_COMMUNICATION_SERVICES_CONNECTION_STRING`, or `ConnectionStrings__AzureCommunicationServices`
 - **From Phone Number**: `ACS_FROM_PHONE_NUMBER`, `AZURE_COMMUNICATION_SERVICES_FROM_PHONE_NUMBER`, or `FROM_PHONE_NUMBER`
 
-> 💡 **Priority**: Configuration in `appsettings.json` takes priority over environment variables
+> 💡 **Configuration Priority**: 
+> 1. Azure Key Vault (if enabled)
+> 2. Environment Variables
+> 3. Configuration in `appsettings.json`
 
 ### Step 4: Execute Batch SMS
 
@@ -487,14 +675,23 @@ export ACS_FROM_PHONE_NUMBER="+12345678901"
 # Basic execution (uses default configuration)
 dotnet run
 
+# Execute with dry run mode (no SMS sent, no costs)
+dotnet run -- --dry-run
+
 # Execute with custom CSV file
 dotnet run -- --csv "path/to/your/recipients.csv"
+
+# Execute with dry run and custom CSV file
+dotnet run -- --dry-run --csv "path/to/your/recipients.csv"
 
 # Execute with custom output directory
 dotnet run -- --output "custom-reports"
 
 # Execute with both custom CSV and output
 dotnet run -- --csv "recipients.csv" --output "reports"
+
+# Execute with dry run, custom CSV, and output
+dotnet run -- --dry-run --csv "recipients.csv" --output "reports"
 ```
 
 #### 🎯 **Using Single-File Executable**
@@ -505,14 +702,23 @@ cd publish-final
 # Basic execution
 BatchSMS.exe
 
+# Execute with dry run mode (no SMS sent, no costs)
+BatchSMS.exe --dry-run
+
 # Execute with custom CSV file
 BatchSMS.exe --csv "path/to/your/recipients.csv"
+
+# Execute with dry run and custom CSV file
+BatchSMS.exe --dry-run --csv "path/to/your/recipients.csv"
 
 # Execute with custom output directory  
 BatchSMS.exe --output "custom-reports"
 
 # Execute with both custom CSV and output
 BatchSMS.exe --csv "recipients.csv" --output "reports"
+
+# Execute with dry run, custom CSV, and output
+BatchSMS.exe --dry-run --csv "recipients.csv" --output "reports"
 ```
 
 #### 🎯 **Validation Commands**

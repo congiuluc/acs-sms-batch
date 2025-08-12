@@ -1,3 +1,6 @@
+using Azure.Extensions.AspNetCore.Configuration.Secrets;
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
 using BatchSMS.Configuration;
 using BatchSMS.Models;
 using BatchSMS.Services;
@@ -6,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
 
@@ -79,17 +83,28 @@ public class Program
         Console.WriteLine("USAGE:");
         Console.WriteLine("  dotnet run                                    # Run with default configuration");
         Console.WriteLine("  dotnet run -- --csv <file> --output <dir>    # Run with custom CSV file and output directory");
+        Console.WriteLine("  dotnet run -- --dry-run                      # Run in dry-run mode (no actual SMS sent)");
         Console.WriteLine("  dotnet run validate <csv-file>               # Validate CSV file before sending");
         Console.WriteLine("  dotnet run --help                            # Show this help message");
         Console.WriteLine();
         Console.WriteLine("OPTIONS:");
         Console.WriteLine("  --csv, -c <file>       Path to CSV file containing recipients");
         Console.WriteLine("  --output, -o <dir>     Output directory for reports (default: Reports)");
+        Console.WriteLine("  --dry-run, -d          Enable dry-run mode (simulate SMS sending without actual delivery)");
         Console.WriteLine("  --help, -h             Show help information");
         Console.WriteLine();
         Console.WriteLine("EXAMPLES:");
         Console.WriteLine("  dotnet run -- --csv \"recipients.csv\" --output \"MyReports\"");
+        Console.WriteLine("  dotnet run -- --dry-run --csv \"test.csv\"");
         Console.WriteLine("  dotnet run validate sample.csv");
+        Console.WriteLine();
+        Console.WriteLine("DRY RUN MODE:");
+        Console.WriteLine("  When --dry-run is enabled:");
+        Console.WriteLine("  • No actual SMS messages are sent");
+        Console.WriteLine("  • All processing and validation still occurs");
+        Console.WriteLine("  • Realistic delays and occasional failures are simulated");
+        Console.WriteLine("  • Reports are generated normally with 'DRY RUN' indicators");
+        Console.WriteLine("  • Perfect for testing configurations and CSV files");
         Console.WriteLine();
         Console.WriteLine("For more information, see README.md");
     }
@@ -102,25 +117,68 @@ public class Program
                 config.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
                 config.AddEnvironmentVariables();
                 config.AddCommandLine(args);
+
+                // Add Azure Key Vault configuration if enabled
+                var configuration = config.Build();
+                var keyVaultConfig = configuration.GetSection("KeyVault").Get<KeyVaultConfig>();
+                
+                if (keyVaultConfig?.Enabled == true && 
+                    !string.IsNullOrWhiteSpace(keyVaultConfig.VaultUri) &&
+                    !keyVaultConfig.VaultUri.Contains("your-keyvault-name"))
+                {
+                    try
+                    {
+                        var vaultUri = new Uri(keyVaultConfig.VaultUri);
+                        var secretClient = new SecretClient(vaultUri, new DefaultAzureCredential());
+                        config.AddAzureKeyVault(secretClient, new KeyVaultSecretManager());
+                        
+                        Log.Information("Azure Key Vault configuration provider added for vault: {VaultUri}", keyVaultConfig.VaultUri);
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Warning(ex, "Failed to add Azure Key Vault configuration provider. Continuing with other providers.");
+                    }
+                }
+                else
+                {
+                    Log.Information("Azure Key Vault is disabled or not configured. Using fallback configuration.");
+                }
             })
             .ConfigureServices((context, services) =>
             {
+                // Parse command line for dry run override
+                var args = Environment.GetCommandLineArgs();
+                var dryRunOverride = args.Any(arg => 
+                    arg.Equals("--dry-run", StringComparison.OrdinalIgnoreCase) || 
+                    arg.Equals("-d", StringComparison.OrdinalIgnoreCase) ||
+                    arg.Equals("--dryrun", StringComparison.OrdinalIgnoreCase));
+
                 // Configuration
                 services.Configure<AzureCommunicationServicesConfig>(
                     context.Configuration.GetSection("AzureCommunicationServices"));
-                services.Configure<SmsConfig>(
-                    context.Configuration.GetSection("SmsConfiguration"));
+                services.Configure<KeyVaultConfig>(
+                    context.Configuration.GetSection("KeyVault"));
+                services.Configure<SmsConfig>(config =>
+                {
+                    context.Configuration.GetSection("SmsConfiguration").Bind(config);
+                    // Override dry run setting if command line argument is present
+                    if (dryRunOverride)
+                    {
+                        config.DryRun = true;
+                    }
+                });
                 services.Configure<RateLimitingConfig>(
                     context.Configuration.GetSection("RateLimiting"));
                 services.Configure<CsvConfig>(
                     context.Configuration.GetSection("CsvConfiguration"));
 
                 // Services
+                services.AddSingleton<IAzureConfigurationService, AzureConfigurationService>();
                 services.AddSingleton<ICsvReaderService, CsvReaderService>();
                 services.AddSingleton<IRateLimitingService, RateLimitingService>();
                 services.AddSingleton<ISmsService, SmsService>();
                 services.AddSingleton<IReportingService, ReportingService>();
-                services.AddTransient<IRealTimeCsvWriter, RealTimeCsvWriter>();
+                services.AddSingleton<IRealTimeCsvWriter, RealTimeCsvWriter>();
                 services.AddTransient<IProgressReporter, ConsoleProgressReporter>();
                 services.AddSingleton<BatchSmsApplication>();
             });
@@ -133,6 +191,7 @@ public class BatchSmsApplication
     private readonly IReportingService _reportingService;
     private readonly IRealTimeCsvWriter _realTimeCsvWriter;
     private readonly IProgressReporter _progressReporter;
+    private readonly SmsConfig _smsConfig;
     private readonly ILogger<BatchSmsApplication> _logger;
 
     public BatchSmsApplication(
@@ -141,6 +200,7 @@ public class BatchSmsApplication
         IReportingService reportingService,
         IRealTimeCsvWriter realTimeCsvWriter,
         IProgressReporter progressReporter,
+        IOptions<SmsConfig> smsConfig,
         ILogger<BatchSmsApplication> logger)
     {
         _csvReaderService = csvReaderService;
@@ -148,6 +208,7 @@ public class BatchSmsApplication
         _reportingService = reportingService;
         _realTimeCsvWriter = realTimeCsvWriter;
         _progressReporter = progressReporter;
+        _smsConfig = smsConfig.Value;
         _logger = logger;
     }
 
@@ -158,7 +219,14 @@ public class BatchSmsApplication
     public async Task RunAsync(string[] args)
     {
         var startTime = DateTime.UtcNow;
-        _logger.LogInformation("Starting BatchSMS application at {StartTime:yyyy-MM-dd HH:mm:ss} UTC", startTime);
+        _logger.LogInformation("Starting BatchSMS application at {StartTime:yyyy-MM-dd HH:mm:ss} UTC{DryRunIndicator}", 
+            startTime, _smsConfig.DryRun ? " [DRY RUN MODE]" : "");
+        
+        if (_smsConfig.DryRun)
+        {
+            _logger.LogWarning("⚠️  DRY RUN MODE ENABLED: No actual SMS messages will be sent. All operations will be simulated.");
+        }
+        
         _logger.LogDebug("Command line arguments: {Args}", string.Join(" ", args));
 
         try
@@ -255,7 +323,11 @@ public class BatchSmsApplication
                 await _reportingService.GenerateFailedRecipientsReportAsync(batch, failedReportPath);
 
                 // Summary
-                _logger.LogInformation("=== BATCH SMS SUMMARY ===");
+                _logger.LogInformation("=== BATCH SMS SUMMARY{DryRunIndicator} ===", _smsConfig.DryRun ? " (DRY RUN)" : "");
+                if (_smsConfig.DryRun)
+                {
+                    _logger.LogWarning("⚠️  DRY RUN MODE: No actual SMS messages were sent. All operations were simulated.");
+                }
                 _logger.LogInformation("Total Recipients: {Total}", batch.TotalRecords);
                 _logger.LogInformation("Successful Sends: {Success}", batch.SuccessfulSends);
                 _logger.LogInformation("Failed Sends: {Failed}", batch.FailedSends);

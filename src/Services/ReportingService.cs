@@ -40,12 +40,13 @@ public class ReportingService : IReportingService
                 },
                 Results = batchResult.Results.Select(r => new
                 {
-                    PhoneNumber = r.RecipientPhoneNumber ?? r.PhoneNumber,
+                    MobileNumber = r.RecipientPhoneNumber ?? r.PhoneNumber ?? "",
                     DisplayName = r.DisplayName ?? "",
-                    r.IsSuccess,
-                    r.MessageId,
-                    r.ErrorMessage,
-                    r.SentAt
+                    SendTime = r.SentAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    SendTimeUtc = r.SentAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                    SendResult = r.IsSuccess ? "SUCCESS" : "FAILED",
+                    MessageId = r.MessageId ?? "",
+                    ErrorMessage = r.ErrorMessage ?? ""
                 })
             };
 
@@ -138,11 +139,10 @@ public class ReportingService : IReportingService
                 MobileNumber = r.RecipientPhoneNumber ?? r.PhoneNumber ?? "",
                 DisplayName = r.DisplayName ?? "",
                 SendTime = r.SentAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                SendTimeUtc = r.SentAt.ToString("yyyy-MM-dd HH:mm:ss UTC"),
+                SendTimeUtc = r.SentAt.ToString("yyyy-MM-dd HH:mm:ss"),
                 SendResult = r.IsSuccess ? "SUCCESS" : "FAILED",
                 MessageId = r.MessageId ?? "",
-                ErrorMessage = r.ErrorMessage ?? "",
-                DurationMs = (DateTime.UtcNow - r.SentAt).TotalMilliseconds.ToString("F0")
+                ErrorMessage = r.ErrorMessage ?? ""
             }).ToList();
 
             // Write headers

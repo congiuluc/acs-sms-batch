@@ -25,6 +25,14 @@ if %ERRORLEVEL% EQU 0 (
         echo 📁 Created logs folder in publish directory
     )
     
+    REM Copy sample.csv file to publish folder
+    if exist "samples\sample.csv" (
+        copy "samples\sample.csv" "publish\sample.csv" >nul
+        echo 📄 Copied sample.csv to publish directory
+    ) else (
+        echo ⚠️  Warning: samples\sample.csv not found
+    )
+    
     echo.
     echo Single-file executable created at: publish\BatchSMS.exe
     echo File size: 

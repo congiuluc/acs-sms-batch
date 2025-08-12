@@ -41,6 +41,7 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
     private StreamWriter? _fileWriter;
     private CsvWriter? _csvWriter;
     private bool _disposed;
+    private bool _closed;
     private string? _filePath;
 
     private record CsvRecord(
@@ -115,10 +116,10 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
 
     public async Task<Result> WriteResultAsync(SmsResult result, SmsRecipient recipient)
     {
-        if (_disposed)
+        if (_disposed || _closed)
         {
-            _logger.LogWarning("Attempted to write to disposed CSV writer for {PhoneNumber}", recipient.PhoneNumber);
-            return Result.Failure("CSV writer has been disposed");
+            _logger.LogWarning("Attempted to write to disposed or closed CSV writer for {PhoneNumber}", recipient.PhoneNumber);
+            return Result.Failure("CSV writer has been disposed or closed");
         }
 
         try
@@ -157,28 +158,32 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
 
     public async Task<Result> FlushAndCloseAsync()
     {
+        if (_closed || _disposed)
+        {
+            _logger.LogDebug("CSV writer already closed or disposed, skipping flush and close");
+            return Result.Success();
+        }
+
         try
         {
+            _closed = true;
+
             // Signal that no more writes will be queued
             _writer.Complete();
 
-            // Wait for all queued writes to complete
-            await _writerTask.ConfigureAwait(false);
-
-            // Close file resources
-            if (_csvWriter != null)
+            // Wait for all queued writes to complete with timeout
+            try
             {
-                await _csvWriter.FlushAsync().ConfigureAwait(false);
-                await _csvWriter.DisposeAsync().ConfigureAwait(false);
-                _csvWriter = null;
+                await _writerTask.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                _logger.LogWarning("CSV writer task did not complete within 10 seconds during close");
+                _cancellationTokenSource.Cancel();
             }
 
-            if (_fileWriter != null)
-            {
-                await _fileWriter.FlushAsync().ConfigureAwait(false);
-                await _fileWriter.DisposeAsync().ConfigureAwait(false);
-                _fileWriter = null;
-            }
+            // Close file resources safely
+            await CloseFileResourcesAsync().ConfigureAwait(false);
 
             _logger.LogInformation("Real-time CSV writer closed successfully: {FilePath}", _filePath);
             return Result.Success();
@@ -190,13 +195,59 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
         }
     }
 
+    private async Task CloseFileResourcesAsync()
+    {
+        // Close CSV writer first
+        var csvWriter = _csvWriter;
+        if (csvWriter != null)
+        {
+            _csvWriter = null; // Clear reference first to prevent race conditions
+            try
+            {
+                await csvWriter.FlushAsync().ConfigureAwait(false);
+                await csvWriter.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed, ignore
+                _logger.LogDebug("CSV writer was already disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing CSV writer");
+            }
+        }
+
+        // Close file writer
+        var fileWriter = _fileWriter;
+        if (fileWriter != null)
+        {
+            _fileWriter = null; // Clear reference first to prevent race conditions
+            try
+            {
+                await fileWriter.FlushAsync().ConfigureAwait(false);
+                await fileWriter.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed, ignore
+                _logger.LogDebug("File writer was already disposed");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Error disposing file writer");
+            }
+        }
+    }
+
     private async Task ProcessWriteQueueAsync()
     {
         try
         {
             await foreach (var record in _reader.ReadAllAsync(_cancellationTokenSource.Token).ConfigureAwait(false))
             {
-                if (_csvWriter == null)
+                var csvWriter = _csvWriter; // Get local reference to avoid race conditions
+                if (csvWriter == null)
                 {
                     _logger.LogWarning("CSV writer not initialized, skipping record for {PhoneNumber}", record.MobileNumber);
                     continue;
@@ -204,18 +255,28 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
 
                 try
                 {
-                    _csvWriter.WriteField(record.MobileNumber);
-                    _csvWriter.WriteField(record.DisplayName);
-                    _csvWriter.WriteField(record.SendTime.ToString("yyyy-MM-dd HH:mm:ss"));
-                    _csvWriter.WriteField(record.SendTimeUtc.ToString("yyyy-MM-dd HH:mm:ss"));
-                    _csvWriter.WriteField(record.SendResult);
-                    _csvWriter.WriteField(record.MessageId);
-                    _csvWriter.WriteField(record.ErrorMessage);
-                    _csvWriter.WriteField(record.DurationMs);
-                    await _csvWriter.NextRecordAsync().ConfigureAwait(false);
-                    await _csvWriter.FlushAsync().ConfigureAwait(false);
+                    csvWriter.WriteField(record.MobileNumber);
+                    csvWriter.WriteField(record.DisplayName);
+                    csvWriter.WriteField(record.SendTime.ToString("yyyy-MM-dd HH:mm:ss"));
+                    csvWriter.WriteField(record.SendTimeUtc.ToString("yyyy-MM-dd HH:mm:ss"));
+                    csvWriter.WriteField(record.SendResult);
+                    csvWriter.WriteField(record.MessageId);
+                    csvWriter.WriteField(record.ErrorMessage);
+                    csvWriter.WriteField(record.DurationMs);
+                    await csvWriter.NextRecordAsync().ConfigureAwait(false);
+                    await csvWriter.FlushAsync().ConfigureAwait(false);
 
                     _logger.LogDebug("CSV record written for {PhoneNumber}", record.MobileNumber);
+                }
+                catch (ObjectDisposedException)
+                {
+                    _logger.LogDebug("CSV writer was disposed while writing record for {PhoneNumber}", record.MobileNumber);
+                    break; // Stop processing if writer is disposed
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("closed") || ex.Message.Contains("disposed"))
+                {
+                    _logger.LogDebug("CSV writer was closed while writing record for {PhoneNumber}: {Message}", record.MobileNumber, ex.Message);
+                    break; // Stop processing if writer is closed
                 }
                 catch (Exception ex)
                 {
@@ -242,13 +303,26 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
 
         try
         {
+            // Signal cancellation to stop background processing
             _cancellationTokenSource.Cancel();
-            _writer.Complete();
+            
+            // Only complete the writer if it hasn't been completed already
+            if (!_closed)
+            {
+                _writer.TryComplete();
+            }
             
             // Give the writer task a chance to complete gracefully
-            if (!_writerTask.Wait(TimeSpan.FromSeconds(5)))
+            try
             {
-                _logger.LogWarning("CSV writer task did not complete within timeout");
+                if (!_writerTask.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    _logger.LogWarning("CSV writer task did not complete within timeout during disposal");
+                }
+            }
+            catch (AggregateException ex)
+            {
+                _logger.LogDebug(ex, "Writer task completed with exceptions during disposal");
             }
         }
         catch (Exception ex)
@@ -257,9 +331,43 @@ public class RealTimeCsvWriter : IRealTimeCsvWriter, IDisposable
         }
         finally
         {
-            _csvWriter?.Dispose();
-            _fileWriter?.Dispose();
-            _cancellationTokenSource.Dispose();
+            // Dispose resources synchronously as a fallback
+            try
+            {
+                var csvWriter = _csvWriter;
+                if (csvWriter != null)
+                {
+                    _csvWriter = null;
+                    csvWriter.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error disposing CSV writer during cleanup");
+            }
+
+            try
+            {
+                var fileWriter = _fileWriter;
+                if (fileWriter != null)
+                {
+                    _fileWriter = null;
+                    fileWriter.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error disposing file writer during cleanup");
+            }
+
+            try
+            {
+                _cancellationTokenSource.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogDebug(ex, "Error disposing cancellation token source");
+            }
         }
     }
 }

@@ -39,6 +39,14 @@ if [ $? -eq 0 ]; then
         echo "📁 Created logs folder in publish-final directory"
     fi
     
+    # Copy sample.csv file to publish-final folder
+    if [ -f "samples/sample.csv" ]; then
+        cp "samples/sample.csv" "publish-final/sample.csv"
+        echo "📄 Copied sample.csv to publish-final directory"
+    else
+        echo "⚠️  Warning: samples/sample.csv not found"
+    fi
+    
     echo
     echo "Single-file executable created at: publish-final/BatchSMS"
     echo "File size:"

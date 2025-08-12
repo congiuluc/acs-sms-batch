@@ -6,10 +6,19 @@ public class AzureCommunicationServicesConfig
     public string FromPhoneNumber { get; set; } = string.Empty;
 }
 
+public class KeyVaultConfig
+{
+    public string VaultUri { get; set; } = string.Empty;
+    public string ConnectionStringSecretName { get; set; } = "acs-connection-string";
+    public string FromPhoneNumberSecretName { get; set; } = "acs-from-phone-number";
+    public bool Enabled { get; set; } = true;
+}
+
 public class SmsConfig
 {
     public bool EnableDeliveryReports { get; set; } = true;
     public string MessageTemplate { get; set; } = string.Empty;
+    public bool DryRun { get; set; } = false;
 }
 
 public class RateLimitingConfig
