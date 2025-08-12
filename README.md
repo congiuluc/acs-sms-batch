@@ -4,25 +4,26 @@
 
 A high-performance .NET 8.0 console application for sending bulk SMS messages using Azure Communication Services with enterprise-level features including real-time progress tracking, comprehensive logging, dynamic CSV processing, and fault-tolerant architecture.
 
-## � Table of Contents
+## 📋 Table of Contents
 
 - [🚀 Quick Start (5 Minutes)](#-quick-start-5-minutes)
-- [🚀 Key Features](#-key-features)
+- [⭐ Key Features](#-key-features)
 - [📊 Azure Communication Services Rate Limits](#-azure-communication-services-rate-limits)
 - [🛠️ Prerequisites](#️-prerequisites)
 - [⚙️ Configuration](#️-configuration)
-- [📋 CSV Sample Files with Message Template Examples](#-csv-sample-files-with-message-template-examples)
-- [🚀 How to Execute Batch SMS](#-how-to-execute-batch-sms)
+- [📄 CSV Sample Files with Message Template Examples](#-csv-sample-files-with-message-template-examples)
+- [⬇️ Download & Run from GitHub Release](#️-download--run-from-github-release)
+- [▶️ How to Execute Batch SMS](#️-how-to-execute-batch-sms)
 - [📧 Message Templates and Personalization](#-message-templates-and-personalization)
 - [🏃‍♂️ Quick Start Examples](#️-quick-start-examples)
-- [📊 Reports and Output](#-reports-and-output)
-- [🔧 Advanced Configuration](#-advanced-configuration)
-- [🛠️ Troubleshooting & Common Issues](#️-troubleshooting--common-issues)
+- [📑 Reports and Output](#-reports-and-output)
+- [🔬 Advanced Configuration](#-advanced-configuration)
+- [🔧 Troubleshooting & Common Issues](#-troubleshooting--common-issues)
 - [📁 Project Structure](#-project-structure)
-- [📝 Comprehensive Logging and Monitoring](#-comprehensive-logging-and-monitoring)
+- [🔍 Comprehensive Logging and Monitoring](#-comprehensive-logging-and-monitoring)
 - [🆘 Support and Resources](#-support-and-resources)
 
-## �🚀 Key Features
+## ⭐ Key Features
 
 ### Core Functionality
 - ✅ **Enterprise-grade bulk SMS sending** from CSV files with flexible format support
@@ -55,7 +56,7 @@ A high-performance .NET 8.0 console application for sending bulk SMS messages us
 - ✅ **Single-file executable** - portable deployment with embedded dependencies
 - ✅ **Configuration-driven design** - flexible settings without code changes
 
-## � Quick Start (5 Minutes)
+## 🚀 Quick Start (5 Minutes)
 
 ### 1. **Download & Configure**
 ```bash
@@ -92,7 +93,7 @@ dotnet run -- --csv your-file.csv
 
 ---
 
-## �📊 Azure Communication Services Rate Limits
+## 📊 Azure Communication Services Rate Limits
 
 This application intelligently respects the following ACS SMS rate limits:
 
@@ -175,7 +176,50 @@ This application intelligently respects the following ACS SMS rate limits:
 - `DisplayNameColumn`: Column name containing display names
 - `SkipEmptyPhoneNumbers`: Skip recipients with empty phone numbers
 
-## 📋 **CSV Sample Files with Message Template Examples**
+## ⬇️ **Download & Run from GitHub Release**
+
+You can run BatchSMS without building from source by downloading the latest release from the [GitHub Releases page](https://github.com/congiuluc/acs-sms-batch/releases):
+
+### 1. Download the Latest Release
+
+1. Go to the [Releases page](https://github.com/congiuluc/acs-sms-batch/releases) of this repository.
+2. Download the `BatchSMS.exe` (Windows) or the appropriate single-file executable for your OS from the latest release.
+3. Download the sample `appsettings.json` and place it in the same folder as the executable.
+4. (Optional) Download a sample CSV file or use your own.
+
+### 2. Configure
+
+Edit `appsettings.json` with your Azure Communication Services credentials and settings as described in the [Configuration](#️-configuration) section.
+
+### 3. Run the Application
+
+Open a terminal in the folder where you downloaded `BatchSMS.exe` and run:
+
+```powershell
+# Basic execution
+./BatchSMS.exe
+
+# With a custom CSV file
+./BatchSMS.exe --csv "your-recipients.csv"
+
+# With a custom output directory
+./BatchSMS.exe --output "reports-folder"
+
+# Validate a CSV file before sending
+./BatchSMS.exe validate your-recipients.csv
+```
+
+For help and all available options:
+
+```powershell
+./BatchSMS.exe --help
+```
+
+**No .NET installation is required** – the single-file executable includes all dependencies.
+
+---
+
+## 📄 **CSV Sample Files with Message Template Examples**
 
 ### 🎯 **Sample CSV for Current MessageTemplate**
 
@@ -224,13 +268,6 @@ Mario Rossi,+393200000001,ORD-12345,Premium Widget,2024-01-15,mario.rossi@email.
 Anna Bianchi,+393200000002,ORD-12346,Deluxe Kit,2024-01-15,anna.bianchi@email.com
 ```
 
-#### **Simple No-Headers Format:**
-```csv
-+393200000001,Mario Rossi,ORD-12345,Premium Widget
-+393200000002,Anna Bianchi,ORD-12346,Deluxe Kit
-+393200000003,Giovanni Verdi,ORD-12347,Standard Package
-```
-
 ### 📝 **Creating Your Own CSV**
 
 #### **Required Columns for Current Template:**
@@ -272,7 +309,7 @@ PhoneNumber,DisplayName,OrderID,ProductName
 
 **Required CSV columns:** DisplayName, ProductName, OrderID
 
-## CSV File Format & Flexible Column Detection
+## 📋 CSV File Format & Flexible Column Detection
 
 > ⚠️ **IMPORTANT**: The minimum required values in your CSV file are:
 > - **PhoneNumber**: Must contain valid phone numbers (preferably in international format like +393200000001)
@@ -310,13 +347,6 @@ Alice Brown,IT,+393200000003,TechCorp
 Bob Wilson,HR,+393200000004,TechCorp
 ```
 
-#### Format 4: Minimal Format (No headers)
-```csv
-+393200000001,John
-+393200000002,Jane
-+393200000003,Bob
-```
-
 ### 📂 **CSV Configuration Options**
 
 #### Flexible Column Mapping (Recommended)
@@ -341,7 +371,7 @@ Bob Wilson,HR,+393200000004,TechCorp
 }
 ```
 
-## 🚀 **How to Execute Batch SMS**
+## ▶️ **How to Execute Batch SMS**
 
 ### Step 1: Build the Application
 
@@ -541,12 +571,6 @@ Use any CSV column as a template variable:
 
 ### Supported Placeholders
 - `{DisplayName}`: Recipient's display name
-- `{Email}`: Email address
-- `{UserId}`: User ID
-- `{JobTitle}`: Job title
-- `{Department}`: Department
-- `{Company}`: Company name
-- `{UserPrincipalName}`: User principal name
 - `{Any CSV Column}`: Any column from your CSV file
 
 ### Template Examples
@@ -610,7 +634,7 @@ dotnet run validate employees.csv
 dotnet run -- --csv employees.csv
 ```
 
-## 📊 **Reports and Output**
+## 📑 **Reports and Output**
 
 The application generates comprehensive reports in the output directory:
 
@@ -636,7 +660,7 @@ Reports/
 └── failed_recipients_20250811_143022.csv
 ```
 
-## 🔧 **Advanced Configuration**
+## 🔬 **Advanced Configuration**
 
 ### Rate Limiting Configuration
 Adjust based on your Azure Communication Services phone number type:
@@ -668,7 +692,7 @@ Adjust based on your Azure Communication Services phone number type:
 }
 ```
 
-## Error Handling
+## ⚠️ Error Handling
 
 The application includes comprehensive error handling:
 
@@ -683,7 +707,7 @@ The application includes comprehensive error handling:
 - **Network timeouts**: Retried with exponential backoff
 - **Service unavailable**: Circuit breaker activation
 
-## Logging
+## 📝 Logging
 
 The application provides detailed logging at multiple levels:
 
@@ -692,7 +716,7 @@ The application provides detailed logging at multiple levels:
 - **Warning**: Rate limiting and recoverable errors
 - **Error**: Failed operations and exceptions
 
-## � **Deployment and Distribution**
+## 📦 **Deployment and Distribution**
 
 ### Single-File Executable Details
 - **File Size**: ~83MB (includes all .NET runtime and dependencies)
@@ -705,12 +729,10 @@ The application provides detailed logging at multiple levels:
 #### Option 1: Copy Single Executable
 ```bash
 # Copy the entire publish-final folder or just the essential files:
-publish-final/
+publish/
 ├── BatchSMS.exe          # Main executable (required)
 ├── appsettings.json      # Configuration file (required)
 ├── sample.csv           # Sample data (optional)
-├── simple-test.csv      # Test data (optional)
-└── no-headers.csv       # Test data (optional)
 ```
 
 #### Option 2: Minimal Deployment
@@ -726,7 +748,7 @@ production-deployment/
 ```bash
 # Create deployment package
 mkdir "BatchSMS-Distribution"
-copy "publish-final\BatchSMS.exe" "BatchSMS-Distribution\"
+copy "publish\BatchSMS.exe" "BatchSMS-Distribution\"
 copy "production-appsettings.json" "BatchSMS-Distribution\appsettings.json"
 copy "README.md" "BatchSMS-Distribution\"
 
@@ -884,7 +906,7 @@ export ACS_CONNECTION_STRING="your-connection-string"
 - Memory usage remains constant regardless of file size
 - Efficient batch processing prevents memory leaks
 
-## 📝 **Comprehensive Logging and Monitoring**
+## 🔍 **Comprehensive Logging and Monitoring**
 
 ### Logging Architecture
 The application implements enterprise-level structured logging using **Serilog** with multiple output targets and detailed operational tracking.
@@ -929,39 +951,6 @@ The application implements enterprise-level structured logging using **Serilog**
 2024-01-15 08:44:09 [DBG] Queuing result for real-time CSV writing
 ```
 
-#### Logging Configuration
-The logging behavior can be customized in `appsettings.json`:
-
-```json
-{
-  "Serilog": {
-    "MinimumLevel": {
-      "Default": "Debug",
-      "Override": {
-        "Microsoft": "Warning",
-        "System": "Warning"
-      }
-    },
-    "WriteTo": [
-      {
-        "Name": "Console",
-        "Args": {
-          "outputTemplate": "{Timestamp:HH:mm:ss} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
-        }
-      },
-      {
-        "Name": "File",
-        "Args": {
-          "path": "logs/BatchSMS-.log",
-          "rollingInterval": "Day",
-          "retainedFileCountLimit": 7,
-          "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {Message:lj}{NewLine}{Exception}"
-        }
-      }
-    ]
-  }
-}
-```
 
 #### Performance Metrics Logged
 - **Batch Processing**: Total duration, throughput (items/minute)
@@ -998,7 +987,7 @@ The logging behavior can be customized in `appsettings.json`:
 3. **Test with small batches** before large deployments
 4. **Monitor Azure portal** for service health and usage
 
-## 🛠️ **Troubleshooting & Common Issues**
+## 🔧 **Troubleshooting & Common Issues**
 
 ### CSV File Requirements
 
@@ -1143,13 +1132,14 @@ dotnet run -- --csv "test-batch.csv"
 - Save output reports for compliance
 - Monitor logs for any issues
 
-## License
+## ⚖️ License
 
 This project is licensed under the MIT License.
 
-## Support
+## 💬 Support
 
 For Azure Communication Services specific issues, refer to:
 - [Azure Communication Services Documentation](https://docs.microsoft.com/azure/communication-services/)
 - [SMS Rate Limits](https://docs.microsoft.com/azure/communication-services/concepts/service-limits)
 - [Troubleshooting Guide](https://docs.microsoft.com/azure/communication-services/concepts/troubleshooting-codes)
+
